@@ -1,0 +1,22 @@
+name: Upstream Sync
+
+permissions:
+  contents: write
+  workflows: write   # 允许修改工作流文件，防止报错
+
+on:
+  schedule:
+    - cron: "0 0 * * * # 每天自动运行一次
+  workflow_dispatch: # 允许手动点击运行
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync and merge upstream repository
+        uses: dabreadman/sync-upstream-repo@v1.3.0
+        with:
+          upstream_repo: "https://github.com/THU-MAIC/OpenMAIC.git"
+          upstream_branch: "main"
+          downstream_branch: "main"
+          token: ${{ secrets.GITHUB_TOKEN }}
