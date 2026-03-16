@@ -6,7 +6,7 @@ permissions:
 
 on:
   schedule:
-    - cron: "0 0 * * * # 每天自动运行一次
+    - cron: "0 0 * * *"# 每天自动运行一次
   workflow_dispatch: # 允许手动点击运行
 
 jobs:
