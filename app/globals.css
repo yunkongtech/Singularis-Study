@@ -235,3 +235,105 @@
     transform: translateX(100%);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PWA & Multi-Device Adaptations
+   iPad · iPhone · Android/Huawei
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Safe Area Insets (notch / home indicator / rounded corners) ── */
+@supports (padding: env(safe-area-inset-top)) {
+  body {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ── Touch Optimizations ── */
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  /* Prevent pull-to-refresh in standalone mode */
+  body {
+    overscroll-behavior-y: contain;
+  }
+
+  /* Disable double-tap-to-zoom on interactive elements */
+  button, a, input, textarea, select, [role="button"] {
+    touch-action: manipulation;
+  }
+
+  /* Eye-friendly focus indicators — soft purple glow instead of harsh outline */
+  :focus-visible {
+    outline: 2px solid oklch(0.65 0.15 280 / 50%);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+/* ── Standalone PWA Mode ── */
+@media all and (display-mode: standalone) {
+  body {
+    min-height: 100dvh;
+    position: relative;
+  }
+
+  .pwa-install-prompt {
+    display: none !important;
+  }
+}
+
+/* ── Phone-specific responsive (iPhone / Huawei) ── */
+@media (max-width: 480px) {
+  button, a, [role="button"] {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ── Tablet-specific (iPad) ── */
+@media (min-width: 768px) and (max-width: 1024px) {
+  button, [role="button"] {
+    min-height: 40px;
+  }
+}
+
+/* ── Visual Viewport fix for software keyboard ── */
+@supports (height: 100dvh) {
+  .min-h-screen,
+  .min-h-\[100vh\] {
+    min-height: 100dvh;
+  }
+}
+
+/* ── Smooth scroll for overflow areas ── */
+@layer base {
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ── Eye-friendly selection color ── */
+::selection {
+  background: oklch(0.75 0.12 280 / 30%);
+  color: inherit;
+}
+
+/* ── Prevent text selection on non-text interactive elements ── */
+button, [role="button"], nav, header, footer, .no-select {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Ensure inputs and textareas remain selectable */
+input, textarea, [contenteditable="true"], .prosemirror-editor {
+  -webkit-user-select: auto;
+  user-select: auto;
+}
