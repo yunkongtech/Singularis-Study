@@ -285,13 +285,23 @@ async function generateTTSForScene(
   let genderVoices: string[] = [];
   try {
     const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
-    const allAgents = useAgentRegistry.getState().agents;
-    const selectedIds = settings.selectedAgentIds || [];
-    for (const id of selectedIds) {
-      const agent = allAgents[id];
-      if (agent?.avatar && agent.role === 'teacher') {
-        genderVoices = resolveVoicesForAgent(providerId, agent.avatar, id, agent.gender);
-        break;
+
+    // Try twice — scene 1 may run before the agent registry is populated
+    for (let retryLookup = 0; retryLookup < 2; retryLookup++) {
+      const allAgents = useAgentRegistry.getState().agents;
+      const selectedIds = settings.selectedAgentIds || [];
+      for (const id of selectedIds) {
+        const agent = allAgents[id];
+        if (agent?.avatar && agent.role === 'teacher') {
+          genderVoices = resolveVoicesForAgent(providerId, agent.avatar, id, agent.gender);
+          break;
+        }
+      }
+      if (genderVoices.length > 0) break;
+      // First attempt found nothing — wait briefly for registry to populate
+      if (retryLookup === 0) {
+        log.info('Teacher not found in agent registry, retrying in 500ms...');
+        await new Promise((r) => setTimeout(r, 500));
       }
     }
   } catch (err) {
