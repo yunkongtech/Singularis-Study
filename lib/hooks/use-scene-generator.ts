@@ -281,24 +281,6 @@ async function generateTTSForScene(
   );
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
 
-  // Build agent-to-voice mapping from agent registry
-  // Each agent's gender (explicit or inferred from avatar) determines their voice
-  let teacherVoice: string | undefined;
-  try {
-    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
-    const allAgents = useAgentRegistry.getState().agents;
-    const selectedIds = settings.selectedAgentIds || [];
-    for (const id of selectedIds) {
-      const agent = allAgents[id];
-      if (agent?.avatar && agent.role === 'teacher') {
-        teacherVoice = resolveVoiceForAgent(providerId, agent.avatar, id, agent.gender);
-        break;
-      }
-    }
-  } catch (err) {
-    log.warn('Failed to load agent registry for voice mapping:', err);
-  }
-
   let failedCount = 0;
   let lastError: string | undefined;
 
@@ -307,14 +289,12 @@ async function generateTTSForScene(
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
 
-    // Use teacher voice for all pre-recorded speech actions
-    const voiceOverride = teacherVoice;
-
     // Retry up to 3 times with exponential backoff for rate-limiting resilience
     let success = false;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await generateAndStoreTTS(audioId, action.text, signal, voiceOverride);
+        // Use the voice the user explicitly selected in settings (no auto-override)
+        await generateAndStoreTTS(audioId, action.text, signal);
 
         // VERIFICATION GATE: confirm audio actually exists in IndexedDB
         const stored = await db.audioFiles.get(audioId);
