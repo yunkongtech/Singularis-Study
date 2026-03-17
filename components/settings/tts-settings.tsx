@@ -158,16 +158,19 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
             {selectedProviderId === 'doubao-tts' && (
               <div className="space-y-2">
                 <Label className="text-sm">APP ID</Label>
-                <Input
-                  placeholder="火山引擎 APP ID"
-                  value={ttsProvidersConfig[selectedProviderId]?.appId || ''}
-                  onChange={(e) =>
-                    setTTSProviderConfig(selectedProviderId, {
-                      appId: e.target.value,
-                    })
-                  }
-                  className="font-mono text-sm"
-                />
+                <div className="relative">
+                  <Input
+                    type={showApiKey ? 'text' : 'password'}
+                    placeholder="火山引擎 APP ID"
+                    value={ttsProvidersConfig[selectedProviderId]?.appId || ''}
+                    onChange={(e) =>
+                      setTTSProviderConfig(selectedProviderId, {
+                        appId: e.target.value,
+                      })
+                    }
+                    className="font-mono text-sm pr-10"
+                  />
+                </div>
               </div>
             )}
             <div className="space-y-2">
