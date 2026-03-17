@@ -56,36 +56,31 @@ function hashCode(s: string): number {
 }
 
 /**
- * Resolve TTS voice for a given agent based on gender.
+ * Resolve TTS voice(s) for a given agent based on gender.
  *
- * - For providers with gendered voices (doubao-tts), picks a voice matching
- *   the agent's gender. Uses agentId as a seed so the same agent always
- *   gets the same voice within a session.
- * - For other providers, returns undefined (use global user setting).
+ * - For providers with gendered voices (doubao-tts), returns ALL voices
+ *   matching the agent's gender, so the caller can try each one.
+ * - For other providers, returns empty array (use global user setting).
  *
  * @param explicitGender If provided, takes priority over avatar-based inference
  */
-export function resolveVoiceForAgent(
+export function resolveVoicesForAgent(
   providerId: TTSProviderId,
   agentAvatar: string,
-  agentId: string,
+  _agentId: string,
   explicitGender?: 'male' | 'female',
-): string | undefined {
+): string[] {
   const voices = getTTSVoices(providerId);
 
   // Only apply gender matching for providers with explicit gender info
   const hasGenderedVoices = voices.some(
     (v: TTSVoiceInfo) => v.gender === 'male' || v.gender === 'female',
   );
-  if (!hasGenderedVoices) return undefined;
+  if (!hasGenderedVoices) return [];
 
   // Prefer explicit gender from AgentConfig, fall back to avatar inference
   const gender = explicitGender || getGenderFromAvatar(agentAvatar);
   const matchingVoices = voices.filter((v: TTSVoiceInfo) => v.gender === gender);
 
-  if (matchingVoices.length === 0) return undefined;
-
-  // Deterministic selection: same agentId always picks the same voice
-  const index = hashCode(agentId) % matchingVoices.length;
-  return matchingVoices[index].id;
+  return matchingVoices.map((v) => v.id);
 }
