@@ -10,6 +10,7 @@ import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import type { Scene } from '@/lib/types/stage';
 import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
+import { resolveVoiceForAgent } from '@/lib/audio/voice-gender-map';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { createLogger } from '@/lib/logger';
 
@@ -209,6 +210,7 @@ export async function generateAndStoreTTS(
   audioId: string,
   text: string,
   signal?: AbortSignal,
+  voiceOverride?: string,
 ): Promise<void> {
   const settings = useSettingsStore.getState();
   if (settings.ttsProviderId === 'browser-native-tts') return;
@@ -221,7 +223,7 @@ export async function generateAndStoreTTS(
       text,
       audioId,
       ttsProviderId: settings.ttsProviderId,
-      ttsVoice: settings.ttsVoice,
+      ttsVoice: voiceOverride || settings.ttsVoice,
       ttsSpeed: settings.ttsSpeed,
       ttsApiKey: ttsProviderConfig?.apiKey || undefined,
       ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
@@ -260,12 +262,49 @@ async function generateTTSForScene(
   scene: Scene,
   signal?: AbortSignal,
 ): Promise<{ success: boolean; failedCount: number; error?: string }> {
-  const providerId = useSettingsStore.getState().ttsProviderId;
+  const settings = useSettingsStore.getState();
+  const providerId = settings.ttsProviderId;
   scene.actions = splitLongSpeechActions(scene.actions || [], providerId);
   const speechActions = scene.actions.filter(
     (a): a is SpeechAction => a.type === 'speech' && !!a.text,
   );
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
+
+  // Build agent-to-voice mapping from agent registry
+  // Each agent's avatar determines their gender → voice
+  let agentVoiceMap: Record<string, string> = {};
+  try {
+    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
+    const allAgents = useAgentRegistry.getState().agents;
+    const selectedIds = settings.selectedAgentIds || [];
+    for (const id of selectedIds) {
+      const agent = allAgents[id];
+      if (agent?.avatar) {
+        const voice = resolveVoiceForAgent(providerId, agent.avatar, id);
+        if (voice) agentVoiceMap[id] = voice;
+      }
+    }
+  } catch (err) {
+    log.warn('Failed to load agent registry for voice mapping:', err);
+  }
+
+  // Determine the teacher agent (first agent with role 'teacher' from selected)
+  // Teacher speaks most speech actions (non-discussion)
+  let teacherVoice: string | undefined;
+  try {
+    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
+    const allAgents = useAgentRegistry.getState().agents;
+    const selectedIds = settings.selectedAgentIds || [];
+    for (const id of selectedIds) {
+      const agent = allAgents[id];
+      if (agent?.role === 'teacher' && agentVoiceMap[id]) {
+        teacherVoice = agentVoiceMap[id];
+        break;
+      }
+    }
+  } catch {
+    // ignore
+  }
 
   let failedCount = 0;
   let lastError: string | undefined;
@@ -273,8 +312,13 @@ async function generateTTSForScene(
   for (const action of speechActions) {
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
+
+    // Use teacher voice for all pre-recorded speech actions
+    // (Discussion speech uses agentId-based voice in the live chat path)
+    const voiceOverride = teacherVoice;
+
     try {
-      await generateAndStoreTTS(audioId, action.text, signal);
+      await generateAndStoreTTS(audioId, action.text, signal, voiceOverride);
     } catch (error) {
       failedCount++;
       lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
