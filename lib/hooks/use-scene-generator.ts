@@ -215,6 +215,17 @@ export async function generateAndStoreTTS(
   const settings = useSettingsStore.getState();
   if (settings.ttsProviderId === 'browser-native-tts') return;
 
+  // Dedup: skip if audio already exists in IndexedDB (e.g. retry, regeneration)
+  try {
+    const existing = await db.audioFiles.get(audioId);
+    if (existing?.blob) {
+      log.info(`TTS cache hit: ${audioId} (${text.length} chars) — skipping API call`);
+      return;
+    }
+  } catch {
+    // IndexedDB error — proceed with generation
+  }
+
   const ttsProviderConfig = settings.ttsProvidersConfig?.[settings.ttsProviderId];
   const response = await fetch('/api/generate/tts', {
     method: 'POST',
@@ -291,25 +302,44 @@ async function generateTTSForScene(
   let failedCount = 0;
   let lastError: string | undefined;
 
-  for (const action of speechActions) {
+  for (let i = 0; i < speechActions.length; i++) {
+    const action = speechActions[i];
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
 
     // Use teacher voice for all pre-recorded speech actions
-    // (Discussion speech uses agentId-based voice in the live chat path)
     const voiceOverride = teacherVoice;
 
-    try {
-      await generateAndStoreTTS(audioId, action.text, signal, voiceOverride);
-    } catch (error) {
+    // Retry up to 3 times with exponential backoff for rate-limiting resilience
+    let success = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await generateAndStoreTTS(audioId, action.text, signal, voiceOverride);
+        success = true;
+        break;
+      } catch (error) {
+        lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
+        if (attempt < 3) {
+          log.warn(`TTS attempt ${attempt}/3 failed for ${action.id}, retrying in ${attempt}s...`);
+          await new Promise((r) => setTimeout(r, attempt * 1000));
+        } else {
+          log.warn('TTS generation failed after 3 attempts:', {
+            providerId,
+            actionId: action.id,
+            textLength: action.text.length,
+            error: lastError,
+          });
+        }
+      }
+    }
+
+    if (!success) {
       failedCount++;
-      lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
-      log.warn('TTS generation failed:', {
-        providerId,
-        actionId: action.id,
-        textLength: action.text.length,
-        error: lastError,
-      });
+    }
+
+    // Small delay between TTS calls to avoid rate-limiting (especially Doubao WebSocket)
+    if (i < speechActions.length - 1) {
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 
@@ -472,20 +502,19 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             const scene = actionsResult.scene;
             const settings = useSettingsStore.getState();
 
-            // TTS generation — graceful degradation: warn but don't block scene
+            // TTS generation — with retry logic for rate-limiting resilience
             if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
               const ttsResult = await generateTTSForScene(scene, signal);
               if (!ttsResult.success) {
-                // Check for abort/epoch change — those ARE fatal
                 if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
                   pausedByFailureOrAbort = true;
                   break;
                 }
-                // TTS partially/fully failed — warn but continue with the scene
-                log.warn(
-                  `TTS degraded for "${outline.title}": ${ttsResult.failedCount} actions failed. ` +
-                    `Scene will proceed without audio for affected actions.`,
-                );
+                store.getState().addFailedOutline(outline);
+                options.onSceneFailed?.(outline, ttsResult.error || 'TTS generation failed');
+                store.getState().setGenerationStatus('paused');
+                pausedByFailureOrAbort = true;
+                break;
               }
             }
 
