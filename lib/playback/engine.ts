@@ -408,10 +408,8 @@ export class PlaybackEngine {
           }
         });
 
-        // Estimated reading time when no pre-generated audio (TTS disabled).
-        // CJK text: ~150ms/char (one char ≈ one word).
-        // Non-CJK text: ~240ms/word (≈250 WPM).
-        // Min 2s. Cancelled on pause; resume() calls processNext directly.
+        // Silent reading timer: used when TTS is disabled or no audio available.
+        // CJK text: ~150ms/char. Non-CJK: ~240ms/word. Min 2s.
         const scheduleReadingTimer = () => {
           const text = speechAction.text;
           const cjkCount = (
@@ -433,37 +431,74 @@ export class PlaybackEngine {
           }, readingMs);
         };
 
-        // Browser-native TTS fallback: use Web Speech API when no pre-generated audio
-        const speakWithBrowserTTS = () => {
-          if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-            scheduleReadingTimer();
-            return;
-          }
-          const utterance = new SpeechSynthesisUtterance(speechAction.text);
-          const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
-          utterance.rate = speed;
-          utterance.onend = () => {
-            this.callbacks.onSpeechEnd?.();
-            if (this.mode === 'playing') this.processNext();
-          };
-          utterance.onerror = () => {
-            scheduleReadingTimer();
-          };
-          window.speechSynthesis.speak(utterance);
-        };
+        // Check which TTS provider the user explicitly selected
+        const isBrowserNativeTTS = this.callbacks.getTTSProviderId?.() === 'browser-native-tts';
 
-        this.audioPlayer
-          .play(speechAction.audioId || '')
-          .then((audioStarted) => {
-            if (!audioStarted) {
-              // No pre-generated audio — use browser-native TTS if available
-              speakWithBrowserTTS();
+        if (isBrowserNativeTTS) {
+          // User explicitly chose browser-native TTS → use Web Speech API
+          // Split into sentence chunks to work around Chrome's ~15s timeout bug
+          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            const fullText = speechAction.text;
+            const sentences = fullText
+              .split(/(?<=[。！？；\n.!?;])\s*/)
+              .map((s) => s.trim())
+              .filter((s) => s.length > 0);
+
+            if (sentences.length === 0) {
+              this.callbacks.onSpeechEnd?.();
+              if (this.mode === 'playing') this.processNext();
+              break;
             }
-          })
-          .catch((err) => {
-            log.error('TTS error:', err);
-            speakWithBrowserTTS();
-          });
+
+            const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
+            let currentIndex = 0;
+
+            // Chrome keep-alive: resume() every 5s to prevent timeout
+            const keepAlive = setInterval(() => {
+              if (window.speechSynthesis.speaking) {
+                window.speechSynthesis.pause();
+                window.speechSynthesis.resume();
+              }
+            }, 5000);
+
+            const speakNext = () => {
+              if (this.mode !== 'playing' || currentIndex >= sentences.length) {
+                clearInterval(keepAlive);
+                this.callbacks.onSpeechEnd?.();
+                if (this.mode === 'playing') this.processNext();
+                return;
+              }
+              const utterance = new SpeechSynthesisUtterance(sentences[currentIndex]);
+              utterance.rate = speed;
+              utterance.onend = () => {
+                currentIndex++;
+                speakNext();
+              };
+              utterance.onerror = () => {
+                clearInterval(keepAlive);
+                scheduleReadingTimer();
+              };
+              window.speechSynthesis.speak(utterance);
+            };
+
+            window.speechSynthesis.cancel();
+            speakNext();
+          } else {
+            scheduleReadingTimer();
+          }
+        } else {
+          // Server-side TTS (Doubao/OpenAI/Azure/etc.) → play from IndexedDB only
+          // No cross-provider fallback. If audio missing, use silent reading timer.
+          this.audioPlayer
+            .play(speechAction.audioId || '')
+            .then((audioStarted) => {
+              if (!audioStarted) scheduleReadingTimer();
+            })
+            .catch((err) => {
+              log.error('TTS playback error:', err);
+              scheduleReadingTimer();
+            });
+        }
         break;
       }
 

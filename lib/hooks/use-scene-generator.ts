@@ -315,7 +315,15 @@ async function generateTTSForScene(
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await generateAndStoreTTS(audioId, action.text, signal, voiceOverride);
+
+        // VERIFICATION GATE: confirm audio actually exists in IndexedDB
+        const stored = await db.audioFiles.get(audioId);
+        if (!stored?.blob) {
+          throw new Error(`Audio generated but not found in IndexedDB for ${audioId}`);
+        }
+
         success = true;
+        log.info(`TTS verified: ${audioId} (${stored.blob.size} bytes, ${action.text.length} chars)`);
         break;
       } catch (error) {
         lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;

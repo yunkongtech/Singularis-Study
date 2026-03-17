@@ -354,6 +354,7 @@ export function Stage({
         return ids.includes(agentId);
       },
       getPlaybackSpeed: () => useSettingsStore.getState().playbackSpeed || 1,
+      getTTSProviderId: () => useSettingsStore.getState().ttsProviderId,
       onComplete: () => {
         // lectureSpeech intentionally NOT cleared — last sentence stays visible
         // until scene transition (auto-play) or user restarts. Scene change

@@ -58,5 +58,8 @@ export interface PlaybackEngineCallbacks {
   /** Get current playback speed multiplier (e.g. 1, 1.5, 2) */
   getPlaybackSpeed?: () => number;
 
+  /** Get the user's selected TTS provider ID (e.g. 'doubao-tts', 'browser-native-tts') */
+  getTTSProviderId?: () => string;
+
   onComplete?: () => void;
 }
