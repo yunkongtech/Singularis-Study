@@ -271,25 +271,7 @@ async function generateTTSForScene(
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
 
   // Build agent-to-voice mapping from agent registry
-  // Each agent's avatar determines their gender → voice
-  let agentVoiceMap: Record<string, string> = {};
-  try {
-    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
-    const allAgents = useAgentRegistry.getState().agents;
-    const selectedIds = settings.selectedAgentIds || [];
-    for (const id of selectedIds) {
-      const agent = allAgents[id];
-      if (agent?.avatar) {
-        const voice = resolveVoiceForAgent(providerId, agent.avatar, id);
-        if (voice) agentVoiceMap[id] = voice;
-      }
-    }
-  } catch (err) {
-    log.warn('Failed to load agent registry for voice mapping:', err);
-  }
-
-  // Determine the teacher agent (first agent with role 'teacher' from selected)
-  // Teacher speaks most speech actions (non-discussion)
+  // Each agent's gender (explicit or inferred from avatar) determines their voice
   let teacherVoice: string | undefined;
   try {
     const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
@@ -297,13 +279,13 @@ async function generateTTSForScene(
     const selectedIds = settings.selectedAgentIds || [];
     for (const id of selectedIds) {
       const agent = allAgents[id];
-      if (agent?.role === 'teacher' && agentVoiceMap[id]) {
-        teacherVoice = agentVoiceMap[id];
+      if (agent?.avatar && agent.role === 'teacher') {
+        teacherVoice = resolveVoiceForAgent(providerId, agent.avatar, id, agent.gender);
         break;
       }
     }
-  } catch {
-    // ignore
+  } catch (err) {
+    log.warn('Failed to load agent registry for voice mapping:', err);
   }
 
   let failedCount = 0;
@@ -490,19 +472,20 @@ export function useSceneGenerator(options: UseSceneGeneratorOptions = {}) {
             const scene = actionsResult.scene;
             const settings = useSettingsStore.getState();
 
-            // TTS generation — failure means the whole scene fails
+            // TTS generation — graceful degradation: warn but don't block scene
             if (settings.ttsEnabled && settings.ttsProviderId !== 'browser-native-tts') {
               const ttsResult = await generateTTSForScene(scene, signal);
               if (!ttsResult.success) {
+                // Check for abort/epoch change — those ARE fatal
                 if (abortRef.current || store.getState().generationEpoch !== startEpoch) {
                   pausedByFailureOrAbort = true;
                   break;
                 }
-                store.getState().addFailedOutline(outline);
-                options.onSceneFailed?.(outline, ttsResult.error || 'TTS generation failed');
-                store.getState().setGenerationStatus('paused');
-                pausedByFailureOrAbort = true;
-                break;
+                // TTS partially/fully failed — warn but continue with the scene
+                log.warn(
+                  `TTS degraded for "${outline.title}": ${ttsResult.failedCount} actions failed. ` +
+                    `Scene will proceed without audio for affected actions.`,
+                );
               }
             }
 

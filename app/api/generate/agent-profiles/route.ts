@@ -91,6 +91,9 @@ Requirements:
 - Each agent needs: name, role, persona (2-3 sentences describing personality and teaching/learning style)
 - Names and personas must be in language: ${language}
 - Each agent must be assigned one avatar from this list: ${JSON.stringify(availableAvatars)}
+  - Male avatars: teacher.png, curious.png, curious-2.png, note-taker.png, note-taker-2.png
+  - Female avatars: teacher-2.png, assist.png, assist-2.png, clown.png, clown-2.png, thinker.png, thinker-2.png
+  - Assign avatars that match the agent's gender
   - Try to use different avatars for each agent
 - Each agent must be assigned one color from this list: ${JSON.stringify(COLOR_PALETTE)}
   - Each agent must have a different color
@@ -101,8 +104,9 @@ Return a JSON object with this exact structure:
     {
       "name": "string",
       "role": "teacher" | "assistant" | "student",
+      "gender": "male" | "female",
       "persona": "string (2-3 sentences)",
-      "avatar": "string (from available list)",
+      "avatar": "string (from available list, must match gender)",
       "color": "string (hex color from palette)",
       "priority": number (10 for teacher, 7 for assistant, 4-6 for student)
     }
@@ -126,6 +130,7 @@ Return a JSON object with this exact structure:
       agents: Array<{
         name: string;
         role: string;
+        gender?: 'male' | 'female';
         persona: string;
         avatar: string;
         color: string;
@@ -165,6 +170,7 @@ Return a JSON object with this exact structure:
       id: `gen-${nanoid(8)}`,
       name: agent.name,
       role: agent.role,
+      gender: agent.gender || undefined,
       persona: agent.persona,
       avatar: agent.avatar || availableAvatars[index % availableAvatars.length],
       color: agent.color || COLOR_PALETTE[index % COLOR_PALETTE.length],

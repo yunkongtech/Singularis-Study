@@ -56,17 +56,20 @@ function hashCode(s: string): number {
 }
 
 /**
- * Resolve TTS voice for a given agent based on avatar gender.
+ * Resolve TTS voice for a given agent based on gender.
  *
  * - For providers with gendered voices (doubao-tts), picks a voice matching
  *   the agent's gender. Uses agentId as a seed so the same agent always
  *   gets the same voice within a session.
  * - For other providers, returns undefined (use global user setting).
+ *
+ * @param explicitGender If provided, takes priority over avatar-based inference
  */
 export function resolveVoiceForAgent(
   providerId: TTSProviderId,
   agentAvatar: string,
   agentId: string,
+  explicitGender?: 'male' | 'female',
 ): string | undefined {
   const voices = getTTSVoices(providerId);
 
@@ -76,7 +79,8 @@ export function resolveVoiceForAgent(
   );
   if (!hasGenderedVoices) return undefined;
 
-  const gender = getGenderFromAvatar(agentAvatar);
+  // Prefer explicit gender from AgentConfig, fall back to avatar inference
+  const gender = explicitGender || getGenderFromAvatar(agentAvatar);
   const matchingVoices = voices.filter((v: TTSVoiceInfo) => v.gender === gender);
 
   if (matchingVoices.length === 0) return undefined;

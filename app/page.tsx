@@ -251,9 +251,18 @@ function HomePage() {
 
     try {
       const userProfile = useUserProfileStore.getState();
+
+      // Auto-detect language from input text:
+      // If user typed Chinese but language is set to en-US, auto-correct to zh-CN
+      const chineseCharCount = (form.requirement.match(/[\u4e00-\u9fff]/g) || []).length;
+      const totalCharCount = form.requirement.replace(/\s/g, '').length;
+      const chineseRatio = totalCharCount > 0 ? chineseCharCount / totalCharCount : 0;
+      const detectedLanguage =
+        chineseRatio > 0.3 && form.language === 'en-US' ? 'zh-CN' : form.language;
+
       const requirements: UserRequirements = {
         requirement: form.requirement,
-        language: form.language,
+        language: detectedLanguage,
         userNickname: userProfile.nickname || undefined,
         userBio: userProfile.bio || undefined,
         webSearch: form.webSearch || undefined,

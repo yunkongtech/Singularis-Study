@@ -10,6 +10,7 @@ export interface AgentConfig {
   persona: string; // Full system prompt (personality, responsibilities)
   avatar: string; // Emoji or image URL
   color: string; // UI theme color (hex)
+  gender?: 'male' | 'female'; // Agent gender (for TTS voice matching)
   allowedActions: string[]; // Action types this agent can use
   priority: number; // Priority for director selection (1-10)
 
@@ -30,6 +31,7 @@ export interface AgentTemplate {
   persona: string;
   avatar: string;
   color: string;
+  gender?: 'male' | 'female'; // Agent gender (for TTS voice matching)
   allowedActions: string[];
   priority: number;
 
