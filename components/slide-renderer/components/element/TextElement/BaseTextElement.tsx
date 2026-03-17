@@ -1,8 +1,10 @@
 'use client';
 
+import { useMemo } from 'react';
 import type { PPTTextElement } from '@/lib/types/slides';
 import { useElementShadow } from '../hooks/useElementShadow';
 import { ElementOutline } from '../ElementOutline';
+import { renderLatexInHtml } from '@/lib/utils/latex-in-html';
 
 export interface BaseTextElementProps {
   elementInfo: PPTTextElement;
@@ -11,10 +13,16 @@ export interface BaseTextElementProps {
 
 /**
  * Base text element component (read-only)
- * Renders static text content with styling
+ * Renders static text content with styling, including inline LaTeX formulas
  */
 export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
   const { shadowStyle } = useElementShadow(elementInfo.shadow);
+
+  // Pre-process content: render any inline LaTeX formulas via KaTeX
+  const processedContent = useMemo(
+    () => renderLatexInHtml(elementInfo.content),
+    [elementInfo.content],
+  );
 
   return (
     <div
@@ -54,10 +62,11 @@ export function BaseTextElement({ elementInfo, target }: BaseTextElementProps) {
           />
           <div
             className={`text ProseMirror-static relative ${target === 'thumbnail' ? 'pointer-events-none' : ''}`}
-            dangerouslySetInnerHTML={{ __html: elementInfo.content }}
+            dangerouslySetInnerHTML={{ __html: processedContent }}
           />
         </div>
       </div>
     </div>
   );
 }
+
