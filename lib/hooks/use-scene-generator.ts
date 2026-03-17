@@ -281,6 +281,23 @@ async function generateTTSForScene(
   );
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
 
+  // Resolve teacher's voice based on avatar gender (male avatar → male voice, female → female)
+  let teacherVoice: string | undefined;
+  try {
+    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
+    const allAgents = useAgentRegistry.getState().agents;
+    const selectedIds = settings.selectedAgentIds || [];
+    for (const id of selectedIds) {
+      const agent = allAgents[id];
+      if (agent?.avatar && agent.role === 'teacher') {
+        teacherVoice = resolveVoiceForAgent(providerId, agent.avatar, id, agent.gender);
+        break;
+      }
+    }
+  } catch (err) {
+    log.warn('Failed to load agent registry for voice mapping:', err);
+  }
+
   let failedCount = 0;
   let lastError: string | undefined;
 
@@ -289,40 +306,40 @@ async function generateTTSForScene(
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
 
-    // Retry up to 3 times with exponential backoff for rate-limiting resilience
+    // Try gender-matched voice first, then fall back to user's default voice
+    const voicesToTry: (string | undefined)[] = teacherVoice
+      ? [teacherVoice, settings.ttsVoice] // Gender voice → user's default
+      : [undefined]; // No override, use user's default
+
     let success = false;
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        // Use the voice the user explicitly selected in settings (no auto-override)
-        await generateAndStoreTTS(audioId, action.text, signal);
+    for (const voiceAttempt of voicesToTry) {
+      if (success) break;
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          await generateAndStoreTTS(audioId, action.text, signal, voiceAttempt);
 
-        // VERIFICATION GATE: confirm audio actually exists in IndexedDB
-        const stored = await db.audioFiles.get(audioId);
-        if (!stored?.blob) {
-          throw new Error(`Audio generated but not found in IndexedDB for ${audioId}`);
-        }
+          // VERIFICATION GATE: confirm audio actually exists in IndexedDB
+          const stored = await db.audioFiles.get(audioId);
+          if (!stored?.blob) {
+            throw new Error(`Audio generated but not found in IndexedDB for ${audioId}`);
+          }
 
-        success = true;
-        log.info(`TTS verified: ${audioId} (${stored.blob.size} bytes, ${action.text.length} chars)`);
-        break;
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
-        if (attempt < 3) {
-          log.warn(`TTS attempt ${attempt}/3 failed for ${action.id}, retrying in ${attempt}s...`);
-          await new Promise((r) => setTimeout(r, attempt * 1000));
-        } else {
-          log.warn('TTS generation failed after 3 attempts:', {
-            providerId,
-            actionId: action.id,
-            textLength: action.text.length,
-            error: lastError,
-          });
+          success = true;
+          log.info(`TTS verified: ${audioId} voice=${voiceAttempt || 'default'} (${stored.blob.size} bytes)`);
+          break;
+        } catch (error) {
+          lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
+          log.warn(`TTS voice=${voiceAttempt || 'default'} attempt ${attempt}/2 failed for ${action.id}: ${lastError}`);
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, attempt * 1000));
+          }
         }
       }
     }
 
     if (!success) {
       failedCount++;
+      log.warn(`TTS generation exhausted all voices for ${action.id}`);
     }
 
     // Small delay between TTS calls to avoid rate-limiting (especially Doubao WebSocket)
