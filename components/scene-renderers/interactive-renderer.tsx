@@ -49,7 +49,17 @@ function patchHtmlForIframe(html: string): string {
   /* Fix min-h-screen: in iframes 100vh is the iframe height, which is correct,
      but ensure body actually fills it */
   body { min-height: 100vh; }
-</style>`;
+</style>
+<!-- KaTeX for LaTeX rendering inside interactive pages -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.21/dist/contrib/auto-render.min.js"
+  onload="renderMathInElement(document.body,{delimiters:[
+    {left:'$$',right:'$$',display:true},
+    {left:'\\\\[',right:'\\\\]',display:true},
+    {left:'$',right:'$',display:false},
+    {left:'\\\\(',right:'\\\\)',display:false}
+  ],throwOnError:false});"></script>`;
 
   // Insert right after <head> or at the start of the document
   const headIdx = html.indexOf('<head>');
