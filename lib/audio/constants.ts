@@ -606,6 +606,46 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
     supportedFormats: ['mp3', 'wav', 'pcm'],
   },
 
+  'doubao-tts': {
+    id: 'doubao-tts',
+    name: '豆包 TTS (火山引擎)',
+    requiresApiKey: true,
+    defaultBaseUrl: 'wss://openspeech.bytedance.com/api/v1/tts/ws_binary',
+    icon: '/logos/doubao.svg',
+    voices: [
+      {
+        id: 'zh_female_vv_uranus_bigtts',
+        name: '女声1·活力',
+        language: 'zh-CN',
+        gender: 'female',
+        description: 'doubaoVoiceFemale1',
+      },
+      {
+        id: 'zh_female_santongyongns_saturn_bigtts',
+        name: '女声2·温柔',
+        language: 'zh-CN',
+        gender: 'female',
+        description: 'doubaoVoiceFemale2',
+      },
+      {
+        id: 'zh_male_ruyayichen_saturn_bigtts',
+        name: '男声1·沉稳',
+        language: 'zh-CN',
+        gender: 'male',
+        description: 'doubaoVoiceMale1',
+      },
+      {
+        id: 'saturn_zh_male_tiancaitongzhuo_tob',
+        name: '男声2·少年',
+        language: 'zh-CN',
+        gender: 'male',
+        description: 'doubaoVoiceMale2',
+      },
+    ],
+    supportedFormats: ['mp3', 'wav'],
+    speedRange: { min: 0.5, max: 2.0, default: 1.0 },
+  },
+
   'browser-native-tts': {
     id: 'browser-native-tts',
     name: '浏览器原生 (Web Speech API)',
@@ -833,6 +873,7 @@ export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
   'azure-tts': 'zh-CN-XiaoxiaoNeural',
   'glm-tts': 'tongtong',
   'qwen-tts': 'Cherry',
+  'doubao-tts': 'zh_female_vv_uranus_bigtts',
   'browser-native-tts': 'default',
 };
 

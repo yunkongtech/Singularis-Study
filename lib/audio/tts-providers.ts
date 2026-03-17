@@ -130,6 +130,9 @@ export async function generateTTS(
     case 'qwen-tts':
       return await generateQwenTTS(config, text);
 
+    case 'doubao-tts':
+      return await generateDoubaoTTS(config, text);
+
     case 'browser-native-tts':
       throw new Error(
         'Browser Native TTS must be handled client-side using Web Speech API. This provider cannot be used on the server.',
@@ -314,6 +317,139 @@ async function generateQwenTTS(config: TTSModelConfig, text: string): Promise<TT
     audio: new Uint8Array(arrayBuffer),
     format: 'wav', // Qwen3 TTS returns WAV format
   };
+}
+
+/**
+ * Doubao TTS 2.0 implementation (火山引擎 WebSocket binary protocol)
+ *
+ * Protocol reference: ByteDance OpenSpeech WebSocket V1
+ * Binary frame format: 4-byte header + 4-byte payload length + gzip-compressed JSON
+ * Response: 4-byte header + audio chunks with sequence numbers
+ */
+async function generateDoubaoTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const appId = process.env.DOUBAO_TTS_APP_ID;
+  const cluster = process.env.DOUBAO_TTS_CLUSTER || 'volcano_tts';
+  const token = config.apiKey;
+  const wsUrl = config.baseUrl || TTS_PROVIDERS['doubao-tts'].defaultBaseUrl;
+
+  if (!appId || !token) {
+    throw new Error(
+      'Doubao TTS requires DOUBAO_TTS_APP_ID env var and TTS_DOUBAO_API_KEY (access token)',
+    );
+  }
+
+  // Build request payload
+  const requestPayload = {
+    app: { appid: appId, token, cluster },
+    user: { uid: 'singularis-study' },
+    audio: {
+      voice_type: config.voice,
+      encoding: 'mp3',
+      speed_ratio: config.speed || 1.0,
+      volume_ratio: 1.0,
+      pitch_ratio: 1.0,
+    },
+    request: {
+      reqid: crypto.randomUUID(),
+      text,
+      text_type: 'plain',
+      operation: 'submit',
+    },
+  };
+
+  // Compress payload with gzip
+  const { gzipSync } = await import('zlib');
+  const payloadBytes = gzipSync(Buffer.from(JSON.stringify(requestPayload), 'utf-8'));
+
+  // Build binary frame: header(4 bytes) + payload_length(4 bytes) + payload
+  // Header: version=0x1, header_size=0x1, message_type=0x1(full_client_request),
+  //         flags=0x0, serialization=0x1(JSON), compression=0x1(gzip), reserved=0x00
+  const header = Buffer.from([0x11, 0x10, 0x11, 0x00]);
+  const lengthBuf = Buffer.alloc(4);
+  lengthBuf.writeUInt32BE(payloadBytes.length, 0);
+  const frame = Buffer.concat([header, lengthBuf, payloadBytes]);
+
+  // WebSocket connection
+  const { default: WebSocket } = await import('ws');
+
+  return new Promise<TTSGenerationResult>((resolve, reject) => {
+    const audioChunks: Buffer[] = [];
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const ws = new WebSocket(wsUrl!, {
+      headers: { Authorization: `Bearer; ${token}` },
+    });
+
+    ws.on('open', () => {
+      ws.send(frame);
+      // 30-second timeout
+      timeoutId = setTimeout(() => {
+        ws.close();
+        reject(new Error('Doubao TTS timeout (30s)'));
+      }, 30000);
+    });
+
+    ws.on('message', (data: Buffer) => {
+      const res = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+      if (res.length < 4) return;
+
+      const messageType = (res[1] >> 4) & 0x0f;
+      const messageFlags = res[1] & 0x0f;
+      const headerSize = res[0] & 0x0f;
+      const payload = res.subarray(headerSize * 4);
+
+      if (messageType === 0x0b) {
+        // audio-only message
+        if (messageFlags === 0) return; // ACK, skip
+        const sequenceNumber = payload.readInt32BE(0);
+        const audioData = payload.subarray(8);
+        if (audioData.length > 0) {
+          audioChunks.push(Buffer.from(audioData));
+        }
+        if (sequenceNumber < 0) {
+          // Last chunk (negative sequence = done)
+          clearTimeout(timeoutId);
+          ws.close();
+          if (audioChunks.length > 0) {
+            const combined = Buffer.concat(audioChunks);
+            resolve({ audio: new Uint8Array(combined), format: 'mp3' });
+          } else {
+            reject(new Error('Doubao TTS returned no audio data'));
+          }
+        }
+      } else if (messageType === 0x0f) {
+        // Error message
+        clearTimeout(timeoutId);
+        const code = payload.readUInt32BE(0);
+        let errorMsg = payload.subarray(8);
+        const compression = res[2] & 0x0f;
+        if (compression === 1) {
+          const { gunzipSync } = require('zlib');
+          errorMsg = gunzipSync(errorMsg);
+        }
+        ws.close();
+        reject(
+          new Error(`Doubao TTS error (code=${code}): ${errorMsg.toString('utf-8')}`),
+        );
+      }
+      // messageType 0x0c (frontend response) - ignore
+    });
+
+    ws.on('error', (err: Error) => {
+      clearTimeout(timeoutId);
+      reject(new Error(`Doubao TTS WebSocket error: ${err.message}`));
+    });
+
+    ws.on('close', (code: number, reason: Buffer) => {
+      clearTimeout(timeoutId);
+      if (audioChunks.length === 0) {
+        reject(new Error(`Doubao TTS connection closed prematurely: code=${code}`));
+      }
+    });
+  });
 }
 
 /**
