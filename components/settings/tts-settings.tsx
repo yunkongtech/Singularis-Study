@@ -4,9 +4,17 @@ import { useState, useRef, useEffect } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
 import { useI18n } from '@/lib/hooks/use-i18n';
 import { useSettingsStore } from '@/lib/store/settings';
-import { TTS_PROVIDERS, DEFAULT_TTS_VOICES } from '@/lib/audio/constants';
+import { TTS_PROVIDERS, DEFAULT_TTS_VOICES, getTTSVoices } from '@/lib/audio/constants';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { Volume2, Loader2, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,6 +34,11 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
   const ttsProvidersConfig = useSettingsStore((state) => state.ttsProvidersConfig);
   const setTTSProviderConfig = useSettingsStore((state) => state.setTTSProviderConfig);
   const activeProviderId = useSettingsStore((state) => state.ttsProviderId);
+  const setTTSVoice = useSettingsStore((state) => state.setTTSVoice);
+  const setTTSSpeed = useSettingsStore((state) => state.setTTSSpeed);
+
+  // Voices for this provider
+  const voices = getTTSVoices(selectedProviderId);
 
   // When testing a non-active provider, use that provider's default voice
   // instead of the active provider's voice (which may be incompatible)
@@ -36,6 +49,7 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
 
   const ttsProvider = TTS_PROVIDERS[selectedProviderId] ?? TTS_PROVIDERS['openai-tts'];
   const isServerConfigured = !!ttsProvidersConfig[selectedProviderId]?.isServerConfigured;
+  const speedRange = ttsProvider.speedRange;
 
   const [showApiKey, setShowApiKey] = useState(false);
   const [testingTTS, setTestingTTS] = useState(false);
@@ -238,6 +252,40 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
             );
           })()}
         </>
+      )}
+
+      {/* Voice Selector & Speed */}
+      {voices.length > 1 && (
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label className="text-sm">{t('settings.ttsVoice') || '音色'}</Label>
+            <Select value={ttsVoice} onValueChange={setTTSVoice}>
+              <SelectTrigger className="h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {voices.map((v) => (
+                  <SelectItem key={v.id} value={v.id} className="text-sm">
+                    {v.name}{v.gender === 'male' ? ' ♂' : v.gender === 'female' ? ' ♀' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          {speedRange && (
+            <div className="space-y-2">
+              <Label className="text-sm">{t('settings.ttsSpeed') || '语速'}: {ttsSpeed.toFixed(1)}x</Label>
+              <Slider
+                value={[ttsSpeed]}
+                onValueChange={(v) => setTTSSpeed(v[0])}
+                min={speedRange.min}
+                max={speedRange.max}
+                step={0.1}
+                className="mt-3"
+              />
+            </div>
+          )}
+        </div>
       )}
 
       {/* Test TTS */}
