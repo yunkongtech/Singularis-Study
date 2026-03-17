@@ -100,6 +100,9 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
       if (apiKeyValue?.trim()) requestBody.ttsApiKey = apiKeyValue;
       const baseUrlValue = ttsProvidersConfig[selectedProviderId]?.baseUrl;
       if (baseUrlValue?.trim()) requestBody.ttsBaseUrl = baseUrlValue;
+      // Send appId for Doubao TTS
+      const appIdValue = ttsProvidersConfig[selectedProviderId]?.appId;
+      if (appIdValue?.trim()) requestBody.ttsAppId = appIdValue;
 
       const response = await fetch('/api/generate/tts', {
         method: 'POST',
@@ -150,9 +153,25 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
       {/* API Key & Base URL */}
       {(ttsProvider.requiresApiKey || isServerConfigured) && (
         <>
-          <div className="grid grid-cols-2 gap-4">
+          <div className={`grid ${selectedProviderId === 'doubao-tts' ? 'grid-cols-3' : 'grid-cols-2'} gap-4`}>
+            {/* APP ID field - Doubao TTS only */}
+            {selectedProviderId === 'doubao-tts' && (
+              <div className="space-y-2">
+                <Label className="text-sm">APP ID</Label>
+                <Input
+                  placeholder="火山引擎 APP ID"
+                  value={ttsProvidersConfig[selectedProviderId]?.appId || ''}
+                  onChange={(e) =>
+                    setTTSProviderConfig(selectedProviderId, {
+                      appId: e.target.value,
+                    })
+                  }
+                  className="font-mono text-sm"
+                />
+              </div>
+            )}
             <div className="space-y-2">
-              <Label className="text-sm">{t('settings.ttsApiKey')}</Label>
+              <Label className="text-sm">{selectedProviderId === 'doubao-tts' ? 'Access Token' : t('settings.ttsApiKey')}</Label>
               <div className="relative">
                 <Input
                   type={showApiKey ? 'text' : 'password'}
@@ -233,9 +252,12 @@ export function TTSSettings({ selectedProviderId }: TTSSettingsProps) {
             disabled={
               testingTTS ||
               !testText.trim() ||
-              (ttsProvider.requiresApiKey &&
-                !ttsProvidersConfig[selectedProviderId]?.apiKey?.trim() &&
-                !isServerConfigured)
+              (selectedProviderId === 'doubao-tts'
+                ? !ttsProvidersConfig[selectedProviderId]?.apiKey?.trim() ||
+                  !ttsProvidersConfig[selectedProviderId]?.appId?.trim()
+                : ttsProvider.requiresApiKey &&
+                  !ttsProvidersConfig[selectedProviderId]?.apiKey?.trim() &&
+                  !isServerConfigured)
             }
             size="default"
             className="gap-2 w-32"

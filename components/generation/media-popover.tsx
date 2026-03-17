@@ -201,6 +201,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
           ttsVoice,
           ttsApiKey: providerConfig?.apiKey,
           ttsBaseUrl: providerConfig?.baseUrl,
+          ttsAppId: providerConfig?.appId,
         }),
       });
       if (!res.ok) throw new Error('TTS failed');

@@ -130,6 +130,7 @@ export interface TTSModelConfig {
   voice: string;
   speed?: number;
   format?: string;
+  appId?: string;  // Required for Doubao TTS (火山引擎 APP ID)
 }
 
 // ============================================================================

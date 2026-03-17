@@ -330,14 +330,14 @@ async function generateDoubaoTTS(
   config: TTSModelConfig,
   text: string,
 ): Promise<TTSGenerationResult> {
-  const appId = process.env.DOUBAO_TTS_APP_ID;
-  const cluster = process.env.DOUBAO_TTS_CLUSTER || 'volcano_tts';
+  const appId = config.appId;
+  const cluster = 'volcano_tts';
   const token = config.apiKey;
   const wsUrl = config.baseUrl || TTS_PROVIDERS['doubao-tts'].defaultBaseUrl;
 
   if (!appId || !token) {
     throw new Error(
-      'Doubao TTS requires DOUBAO_TTS_APP_ID env var and TTS_DOUBAO_API_KEY (access token)',
+      '豆包 TTS 需要 APP ID 和 Access Token，请在设置页面填写',
     );
   }
 

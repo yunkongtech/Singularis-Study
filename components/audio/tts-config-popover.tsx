@@ -73,6 +73,7 @@ export function TtsConfigPopover() {
           ttsVoice: ttsVoice,
           ttsApiKey: providerConfig?.apiKey,
           ttsBaseUrl: providerConfig?.baseUrl,
+          ttsAppId: providerConfig?.appId,
         }),
       });
 

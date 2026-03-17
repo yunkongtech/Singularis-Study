@@ -317,6 +317,11 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
         requestBody.ttsBaseUrl = baseUrlValue;
       }
 
+      const appIdValue = ttsProvidersConfig[ttsProviderId]?.appId;
+      if (appIdValue && appIdValue.trim()) {
+        requestBody.ttsAppId = appIdValue;
+      }
+
       const response = await fetch('/api/generate/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
