@@ -433,14 +433,36 @@ export class PlaybackEngine {
           }, readingMs);
         };
 
+        // Browser-native TTS fallback: use Web Speech API when no pre-generated audio
+        const speakWithBrowserTTS = () => {
+          if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
+            scheduleReadingTimer();
+            return;
+          }
+          const utterance = new SpeechSynthesisUtterance(speechAction.text);
+          const speed = this.callbacks.getPlaybackSpeed?.() ?? 1;
+          utterance.rate = speed;
+          utterance.onend = () => {
+            this.callbacks.onSpeechEnd?.();
+            if (this.mode === 'playing') this.processNext();
+          };
+          utterance.onerror = () => {
+            scheduleReadingTimer();
+          };
+          window.speechSynthesis.speak(utterance);
+        };
+
         this.audioPlayer
           .play(speechAction.audioId || '')
           .then((audioStarted) => {
-            if (!audioStarted) scheduleReadingTimer();
+            if (!audioStarted) {
+              // No pre-generated audio — use browser-native TTS if available
+              speakWithBrowserTTS();
+            }
           })
           .catch((err) => {
             log.error('TTS error:', err);
-            scheduleReadingTimer();
+            speakWithBrowserTTS();
           });
         break;
       }
