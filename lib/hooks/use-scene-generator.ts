@@ -337,10 +337,6 @@ async function generateTTSForScene(
       log.warn(`TTS generation exhausted all voices for ${action.id}`);
     }
 
-    // Small delay between TTS calls to avoid rate-limiting (especially Doubao WebSocket)
-    if (i < speechActions.length - 1) {
-      await new Promise((r) => setTimeout(r, 500));
-    }
   }
 
   return {

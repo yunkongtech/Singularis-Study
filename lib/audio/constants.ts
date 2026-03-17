@@ -634,13 +634,6 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
         gender: 'male',
         description: 'doubaoVoiceMale1',
       },
-      {
-        id: 'saturn_zh_male_tiancaitongzhuo_tob',
-        name: '男声2·少年',
-        language: 'zh-CN',
-        gender: 'male',
-        description: 'doubaoVoiceMale2',
-      },
     ],
     supportedFormats: ['mp3', 'wav'],
     speedRange: { min: 0.5, max: 2.0, default: 1.0 },
