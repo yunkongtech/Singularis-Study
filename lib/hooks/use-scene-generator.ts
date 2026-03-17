@@ -10,7 +10,7 @@ import type { AgentInfo } from '@/lib/generation/generation-pipeline';
 import type { Scene } from '@/lib/types/stage';
 import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
-import { resolveVoicesForAgent } from '@/lib/audio/voice-gender-map';
+
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
 import { createLogger } from '@/lib/logger';
 
@@ -281,33 +281,8 @@ async function generateTTSForScene(
   );
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
 
-  // Resolve teacher's voice based on avatar gender (male avatar → all male voices, etc.)
-  let genderVoices: string[] = [];
-  try {
-    const { useAgentRegistry } = await import('@/lib/orchestration/registry/store');
-
-    // Try twice — scene 1 may run before the agent registry is populated
-    for (let retryLookup = 0; retryLookup < 2; retryLookup++) {
-      const allAgents = useAgentRegistry.getState().agents;
-      const selectedIds = settings.selectedAgentIds || [];
-      for (const id of selectedIds) {
-        const agent = allAgents[id];
-        if (agent?.avatar && agent.role === 'teacher') {
-          genderVoices = resolveVoicesForAgent(providerId, agent.avatar, id, agent.gender);
-          break;
-        }
-      }
-      if (genderVoices.length > 0) break;
-      // First attempt found nothing — wait briefly for registry to populate
-      if (retryLookup === 0) {
-        log.info('Teacher not found in agent registry, retrying in 500ms...');
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-  } catch (err) {
-    log.warn('Failed to load agent registry for voice mapping:', err);
-  }
-
+  // Use the voice the user selected in settings — no auto-gender override
+  // Avatar gender is enforced to match the voice at the UI layer instead
   let failedCount = 0;
   let lastError: string | undefined;
 
@@ -316,37 +291,21 @@ async function generateTTSForScene(
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
 
-    // Try all gender-matched voices first, then fall back to user's default
-    // e.g. male teacher: [male1, male2, user_default_voice]
-    const voicesToTry: (string | undefined)[] = genderVoices.length > 0
-      ? [...genderVoices, settings.ttsVoice] // All same-gender → user's default
-      : [undefined]; // No override, use user's default
+    try {
+      await generateAndStoreTTS(audioId, action.text, signal);
 
-    let success = false;
-    for (const voiceAttempt of voicesToTry) {
-      if (success) break;
-      try {
-        await generateAndStoreTTS(audioId, action.text, signal, voiceAttempt);
-
-        // VERIFICATION GATE: confirm audio actually exists in IndexedDB
-        const stored = await db.audioFiles.get(audioId);
-        if (!stored?.blob) {
-          throw new Error(`Audio generated but not found in IndexedDB for ${audioId}`);
-        }
-
-        success = true;
-        log.info(`TTS verified: ${audioId} voice=${voiceAttempt || 'default'} (${stored.blob.size} bytes)`);
-      } catch (error) {
-        lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
-        log.warn(`TTS voice=${voiceAttempt || 'default'} failed for ${action.id}: ${lastError}`);
+      // VERIFICATION GATE: confirm audio actually exists in IndexedDB
+      const stored = await db.audioFiles.get(audioId);
+      if (!stored?.blob) {
+        throw new Error(`Audio generated but not found in IndexedDB for ${audioId}`);
       }
-    }
 
-    if (!success) {
+      log.info(`TTS verified: ${audioId} (${stored.blob.size} bytes)`);
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
+      log.warn(`TTS failed for ${action.id}: ${lastError}`);
       failedCount++;
-      log.warn(`TTS generation exhausted all voices for ${action.id}`);
     }
-
   }
 
   return {

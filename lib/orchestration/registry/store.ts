@@ -10,6 +10,44 @@ import { getActionsForRole } from './types';
 import { USER_AVATAR } from '@/lib/types/roundtable';
 import type { Participant, ParticipantRole } from '@/lib/types/roundtable';
 import { useUserProfileStore } from '@/lib/store/user-profile';
+import { useSettingsStore } from '@/lib/store/settings';
+import { getTTSVoices } from '@/lib/audio/constants';
+
+// Female teacher avatars (used when user selects a female TTS voice)
+const FEMALE_TEACHER_AVATARS = ['/avatars/teacher-2.png', '/avatars/assist.png'];
+// Male teacher avatars (used when user selects a male TTS voice)
+const MALE_TEACHER_AVATARS = ['/avatars/teacher.png', '/avatars/curious.png'];
+
+/**
+ * Get the appropriate teacher avatar based on the user's selected TTS voice gender.
+ * If user selected a female voice → return female teacher avatar.
+ * If user selected a male voice → return male teacher avatar.
+ * If voice has no gender info → return original avatar unchanged.
+ */
+function getTeacherAvatarByVoiceGender(originalAvatar: string): string {
+  try {
+    const { ttsVoice, ttsProviderId } = useSettingsStore.getState();
+    const voices = getTTSVoices(ttsProviderId);
+    const selectedVoice = voices.find((v) => v.id === ttsVoice);
+
+    if (!selectedVoice?.gender) return originalAvatar;
+
+    if (selectedVoice.gender === 'female') {
+      // If original is already female, keep it; otherwise swap to female
+      return FEMALE_TEACHER_AVATARS.includes(originalAvatar)
+        ? originalAvatar
+        : FEMALE_TEACHER_AVATARS[0];
+    }
+    if (selectedVoice.gender === 'male') {
+      return MALE_TEACHER_AVATARS.includes(originalAvatar)
+        ? originalAvatar
+        : MALE_TEACHER_AVATARS[0];
+    }
+  } catch {
+    // Settings store may not be available on server
+  }
+  return originalAvatar;
+}
 
 interface AgentRegistryState {
   agents: Record<string, AgentConfig>; // Map of agentId -> config
@@ -283,11 +321,17 @@ export function agentsToParticipants(
     const displayName =
       i18nName && i18nName !== `settings.agentNames.${agent.id}` ? i18nName : agent.name;
 
+    // For the teacher: enforce avatar gender to match the user's selected TTS voice
+    let avatar = agent.avatar;
+    if (role === 'teacher') {
+      avatar = getTeacherAvatarByVoiceGender(avatar);
+    }
+
     participants.push({
       id: agent.id,
       name: displayName,
       role,
-      avatar: agent.avatar,
+      avatar,
       isOnline: true,
       isSpeaking: false,
     });
